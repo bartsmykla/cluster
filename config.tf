@@ -1,6 +1,9 @@
 variable "do_token" {
 }
 
+variable "do_dns_token" {
+}
+
 provider "digitalocean" {
   token = var.do_token
 }
@@ -94,14 +97,6 @@ resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
   droplet_ids = local.droplet_ids
 }
 
-output "digitalocean_kubernetes_cluster" {
-  value = digitalocean_kubernetes_cluster.smykla-prod
-}
-
-output "digitalocean_loadbalancer" {
-  value = digitalocean_loadbalancer.smykla-prod-public-lb
-}
-
 locals {
   helm = {
     tiller = {
@@ -161,7 +156,7 @@ data "helm_repository" "stable" {
   url  = "https://kubernetes-charts.storage.googleapis.com"
 }
 
-resource "helm_release" "example" {
+resource "helm_release" "nginx-ingress" {
   name       = "nginx-ingress"
   repository = data.helm_repository.stable.metadata.0.name
   chart      = "nginx-ingress"
@@ -192,7 +187,7 @@ resource "helm_release" "example" {
   }
 
   set {
-    name  = "controller.service.nodePorts.http"
+    name  = "controller.service.nodePorts.https"
     value = "32169"
   }
 
@@ -201,5 +196,204 @@ resource "helm_release" "example" {
   depends_on = [
     kubernetes_service_account.tiller,
     kubernetes_cluster_role_binding.tiller
+  ]
+}
+
+locals {
+  cert-manager = {
+    crds-path = "https://raw.githubusercontent.com/jetstack/cert-manager/release-0.8/deploy/manifests/00-crds.yaml"
+  }
+}
+
+resource "null_resource" "cert-manager-crds" {
+  // Just precaution, if there is already existing file /tmp/temporary_kubeconfig
+  provisioner "local-exec" {
+    command = "ls /tmp/temporary_kubeconfig && mv /tmp/temporary_kubeconfig /tmp/temporary_kubeconfig_old_qwerty987"
+  }
+
+  provisioner "local-exec" {
+    command = "echo \"${local.kubeconfig.raw_config}\" > /tmp/temporary_kubeconfig"
+  }
+
+  provisioner "local-exec" {
+    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig apply -f ${local.cert-manager.crds-path}"
+  }
+
+  provisioner "local-exec" {
+    command = "ls /tmp/temporary_kubeconfig_old_qwerty987 && mv /tmp/temporary_kubeconfig_old_qwerty987 /tmp/temporary_kubeconfig"
+  }
+
+//  provisioner "local-exec" {
+//    when    = "destroy"
+//    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f ${local.cert-manager.crds-path}"
+//  }
+
+  depends_on = [
+    digitalocean_kubernetes_cluster.smykla-prod
+  ]
+}
+
+data "helm_repository" "jetstack" {
+  name = "jetstack"
+  url  = "https://charts.jetstack.io"
+}
+
+resource "helm_release" "cert-manager" {
+  name       = "cert-manager"
+  repository = data.helm_repository.jetstack.url
+  chart      = "cert-manager"
+  namespace  = "cert-manager"
+
+  depends_on = [
+    kubernetes_service_account.tiller,
+    kubernetes_cluster_role_binding.tiller,
+    null_resource.cert-manager-crds
+  ]
+}
+
+resource "kubernetes_secret" "do-dns-token" {
+  metadata {
+    name      = "do-dns-token"
+    namespace = "cert-manager"
+  }
+  data = {
+    access-token = var.do_dns_token
+  }
+  depends_on = [
+    helm_release.cert-manager
+  ]
+}
+
+locals {
+  files = {
+    cluster-issuer : file("templates/cluster_issuer.yml")
+  }
+}
+
+resource "null_resource" "cluster-issuer" {
+  // Just precaution, if there is already existing file /tmp/temporary_kubeconfig
+  provisioner "local-exec" {
+    command = "ls /tmp/temporary_kubeconfig && mv /tmp/temporary_kubeconfig /tmp/temporary_kubeconfig_old_qwerty987"
+  }
+
+  provisioner "local-exec" {
+    command = "echo \"${local.kubeconfig.raw_config}\" > /tmp/temporary_kubeconfig"
+  }
+
+  provisioner "local-exec" {
+    command = "cat <<EOF | kubectl --kubeconfig /tmp/temporary_kubeconfig apply -f -\n${local.files.cluster-issuer}\nEOF"
+  }
+
+  provisioner "local-exec" {
+    command = "ls /tmp/temporary_kubeconfig_old_qwerty987 && mv /tmp/temporary_kubeconfig_old_qwerty987 /tmp/temporary_kubeconfig"
+  }
+
+  //  provisioner "local-exec" {
+  //    when    = "destroy"
+  //    command = "cat <<EOF | kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f -\n${local.files.cluster-issuer}\nEOF"
+  //  }
+
+  depends_on = [
+    helm_release.cert-manager
+  ]
+}
+
+data "digitalocean_domain" "smykla-blog" {
+  name = "smykla.blog"
+}
+
+resource "digitalocean_record" "wildcard-smykla-blog" {
+  domain = data.digitalocean_domain.smykla-blog.name
+  type   = "A"
+  name   = "*"
+  value  = digitalocean_loadbalancer.smykla-prod-public-lb.ip
+  ttl    = 60
+}
+
+resource "kubernetes_deployment" "simple-go-server" {
+  metadata {
+    name = "simple-go-server"
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "simple-go-server"
+      }
+    }
+    template {
+      metadata {
+        name = "simple-go-server"
+        labels = {
+          app = "simple-go-server"
+        }
+      }
+      spec {
+        container {
+          name  = "simple-go-server"
+          image = "bartsmykla/simple-go-http-server:0.0.3"
+          port {
+            container_port = 8080
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "simple-go-server" {
+  metadata {
+    name = "simple-go-server"
+    labels = {
+      app = "simple-go-server"
+    }
+  }
+
+  spec {
+    selector = {
+      app = "simple-go-server"
+    }
+    port {
+      port        = 8080
+      target_port = 8080
+    }
+  }
+}
+
+resource "kubernetes_ingress" "simple-go-server-ingress" {
+  metadata {
+    name = "simple-go-server-ingress"
+    annotations = {
+      "ingress.kubernetes.io/ssl-redirect"     = "true"
+      "kubernetes.io/tls-acme"                 = "true"
+      "certmanager.k8s.io/cluster-issuer"      = "letsencrypt-production"
+      "kubernetes.io/ingress.class"            = "nginx"
+      "certmanager.k8s.io/acme-challenge-type" = "dns01"
+      "certmanager.k8s.io/acme-dns01-provider" = "prod-digitalocean"
+    }
+  }
+
+  spec {
+    tls {
+      hosts       = ["demo.smykla.blog"]
+      secret_name = "demo-smykla-blog-tls-cert"
+    }
+    rule {
+      host = "demo.smykla.blog"
+      http {
+        path {
+          path = "/"
+          backend {
+            service_name = "simple-go-server"
+            service_port = 8080
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    helm_release.cert-manager,
+    null_resource.cluster-issuer
   ]
 }
