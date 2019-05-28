@@ -48,12 +48,19 @@ provider "kubernetes" {
   cluster_ca_certificate = local.k8s.cluster.ca.certificate
 }
 
-data "http" "droplets" {
-  url = "https://api.digitalocean.com/v2/droplets"
+locals {
+  temp_droplets_json_path = "/tmp/droplets_qwerty9876.json"
+}
 
-  request_headers = {
-    Content-Type  = "application/json"
-    Authorization = "Bearer ${var.do_token}"
+resource "null_resource" "get_droplets" {
+  provisioner "local-exec" {
+    command = "${path.cwd}/scripts/get_droplets.sh --json-file-path ${local.temp_droplets_json_path}"
+  }
+
+  provisioner "local-exec" {
+
+    command = "rm ${local.temp_droplets_json_path} || echo '${local.temp_droplets_json_path} not existing'"
+    when    = "destroy"
   }
 
   depends_on = [
@@ -61,11 +68,23 @@ data "http" "droplets" {
   ]
 }
 
+data "local_file" "droplets_json" {
+  filename = local.temp_droplets_json_path
+
+  depends_on = [
+    null_resource.get_droplets
+  ]
+}
+
 locals {
   droplet_ids = [
-    for droplet in jsondecode(data.http.droplets.body).droplets :
+    for droplet in jsondecode(data.local_file.droplets_json.content).droplets :
     droplet.id
     if contains(droplet.tags, "k8s:${digitalocean_kubernetes_cluster.smykla-prod.id}")
+  ]
+
+  depends_on = [
+    null_resource.get_droplets
   ]
 }
 
@@ -203,34 +222,22 @@ locals {
   cert-manager = {
     crds-path = "https://raw.githubusercontent.com/jetstack/cert-manager/release-0.8/deploy/manifests/00-crds.yaml"
   }
+  temp_kubeconfig_path = "/tmp/kubeconfig_qwerty9876"
 }
 
 resource "null_resource" "cert-manager-crds" {
-  // Just precaution, if there is already existing file /tmp/temporary_kubeconfig
   provisioner "local-exec" {
-    command = "ls /tmp/temporary_kubeconfig && mv /tmp/temporary_kubeconfig /tmp/temporary_kubeconfig_old_qwerty987"
+    command = "${path.cwd}/scripts/kubectl_operations.sh --cluster-id ${digitalocean_kubernetes_cluster.smykla-prod.id} --kubeconfig-path ${local.temp_kubeconfig_path} --crds-path ${local.cert-manager.crds-path}"
   }
 
   provisioner "local-exec" {
-    command = "echo \"${local.kubeconfig.raw_config}\" > /tmp/temporary_kubeconfig"
+    when    = "destroy"
+    command = "rm ${local.temp_kubeconfig_path} || echo '${local.temp_kubeconfig_path} not existing'"
   }
 
-  provisioner "local-exec" {
-    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig apply -f ${local.cert-manager.crds-path}"
-  }
-
-  provisioner "local-exec" {
-    command = "ls /tmp/temporary_kubeconfig_old_qwerty987 && mv /tmp/temporary_kubeconfig_old_qwerty987 /tmp/temporary_kubeconfig"
-  }
-
-  //  provisioner "local-exec" {
-  //    when    = "destroy"
-  //    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f ${local.cert-manager.crds-path}"
-  //  }
-
-  depends_on = [
-    digitalocean_kubernetes_cluster.smykla-prod
-  ]
+  //  depends_on = [
+  //    digitalocean_kubernetes_cluster.smykla-prod
+  //  ]
 }
 
 data "helm_repository" "jetstack" {
@@ -264,34 +271,15 @@ resource "kubernetes_secret" "do-dns-token" {
   ]
 }
 
-locals {
-  files = {
-    cluster-issuer : file("templates/cluster_issuer.yml")
-  }
-}
-
 resource "null_resource" "cluster-issuer" {
-  // Just precaution, if there is already existing file /tmp/temporary_kubeconfig
   provisioner "local-exec" {
-    command = "ls /tmp/temporary_kubeconfig && mv /tmp/temporary_kubeconfig /tmp/temporary_kubeconfig_old_qwerty987"
+    command = "${path.cwd}/scripts/kubectl_operations.sh --cluster-id ${digitalocean_kubernetes_cluster.smykla-prod.id} --kubeconfig-path ${local.temp_kubeconfig_path} --create-cluster-issuers"
   }
 
   provisioner "local-exec" {
-    command = "echo \"${local.kubeconfig.raw_config}\" > /tmp/temporary_kubeconfig"
+    when    = "destroy"
+    command = "rm ${local.temp_kubeconfig_path}"
   }
-
-  provisioner "local-exec" {
-    command = "cat <<EOF | kubectl --kubeconfig /tmp/temporary_kubeconfig apply -f -\n${local.files.cluster-issuer}\nEOF"
-  }
-
-  provisioner "local-exec" {
-    command = "ls /tmp/temporary_kubeconfig_old_qwerty987 && mv /tmp/temporary_kubeconfig_old_qwerty987 /tmp/temporary_kubeconfig"
-  }
-
-  //  provisioner "local-exec" {
-  //    when    = "destroy"
-  //    command = "cat <<EOF | kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f -\n${local.files.cluster-issuer}\nEOF"
-  //  }
 
   depends_on = [
     helm_release.cert-manager
@@ -366,7 +354,7 @@ resource "kubernetes_ingress" "simple-go-server-ingress" {
     annotations = {
       "ingress.kubernetes.io/ssl-redirect"     = "true"
       "kubernetes.io/tls-acme"                 = "true"
-      "certmanager.k8s.io/cluster-issuer"      = "letsencrypt-production"
+      "certmanager.k8s.io/cluster-issuer"      = "letsencrypt-staging"
       "kubernetes.io/ingress.class"            = "nginx"
       "certmanager.k8s.io/acme-challenge-type" = "dns01"
       "certmanager.k8s.io/acme-dns01-provider" = "prod-digitalocean"

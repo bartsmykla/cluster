@@ -70,6 +70,17 @@ orbs:
                 terraform validate << parameters.additional_params >>
 
 jobs:
+  shellcheck:
+    docker:
+      - image: koalaman/shellcheck-alpine:stable
+    steps:
+      - checkout
+      - run:
+          name: "Check Scripts"
+          command: |
+            find . -type f -name '*.sh' | wc -l
+            find . -type f -name '*.sh' | xargs shellcheck --external-sources
+
   terraform-plan-infrastructure:
     docker:
       - image: bartsmykla/cicd:1.4.2
@@ -95,9 +106,6 @@ jobs:
       - terraform/config_validate
       - terraform/plan:
           plan_path: << parameters.plan_path >>
-      - run:
-          name: "Display plan"
-          command: cat << parameters.plan_path >>
       - save_cache:
           key: terraform-plan-{{.Environment.CIRCLE_WORKFLOW_ID}}
           paths:
@@ -106,7 +114,6 @@ jobs:
           path: << parameters.plan_path >>
     environment:
       TF_IN_AUTOMATION: true
-      TF_LOG: ERROR
 
   terraform-setup-infrastructure:
     docker:
@@ -125,12 +132,14 @@ jobs:
           plan_path: << parameters.plan_path >>
     environment:
       TF_IN_AUTOMATION: true
-      TF_LOG: ERROR
 
 workflows:
   "Setup Infrastructure":
     jobs:
-      - terraform-plan-infrastructure
+      - shellcheck
+      - terraform-plan-infrastructure:
+          requires:
+            - shellcheck
       - hold:
           type: approval
           requires:
