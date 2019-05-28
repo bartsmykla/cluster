@@ -12,7 +12,7 @@ resource "digitalocean_kubernetes_cluster" "smykla-prod" {
   name    = "smykla-prod"
   region  = "lon1"
   version = "1.14.2-do.0"
-  tags    = ["k8s", "production"]
+  tags    = ["smykla-prod"]
 
   node_pool {
     name       = "worker-pool"
@@ -223,10 +223,10 @@ resource "null_resource" "cert-manager-crds" {
     command = "ls /tmp/temporary_kubeconfig_old_qwerty987 && mv /tmp/temporary_kubeconfig_old_qwerty987 /tmp/temporary_kubeconfig"
   }
 
-//  provisioner "local-exec" {
-//    when    = "destroy"
-//    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f ${local.cert-manager.crds-path}"
-//  }
+  //  provisioner "local-exec" {
+  //    when    = "destroy"
+  //    command = "kubectl --kubeconfig /tmp/temporary_kubeconfig delete -f ${local.cert-manager.crds-path}"
+  //  }
 
   depends_on = [
     digitalocean_kubernetes_cluster.smykla-prod

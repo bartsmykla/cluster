@@ -1,0 +1,110 @@
+version: 2.1
+
+orbs:
+  terraform:
+    commands:
+      init:
+        description: "Terraform Init"
+        parameters:
+          additional_params:
+            type: string
+            default: ""
+        steps:
+          - run:
+              name: "Terraform Init"
+              command: |
+                terraform init --force-copy << parameters.additional_params >>
+
+      plan:
+        description: "Terraform Plan"
+        parameters:
+          additional_params:
+            type: string
+            default: ""
+        steps:
+          - run:
+              name: "Terraform Plan"
+              command: |
+                terraform plan << parameters.additional_params >>
+
+      apply:
+        description: "Terraform Apply"
+        parameters:
+          additional_params:
+            type: string
+            default: ""
+        steps:
+          - run:
+              name: "Terraform Apply"
+              command: |
+                terraform apply --auto-approve << parameters.additional_params >>
+
+      destroy:
+        description: "Terraform Destroy"
+        parameters:
+          additional_params:
+            type: string
+            default: ""
+        steps:
+          - run:
+              name: "Terraform Destroy"
+              command: |
+                terraform destroy --auto-approve << parameters.additional_params >>
+
+      config_validate:
+        description: "Terraform Config Validate"
+        parameters:
+          additional_params:
+            type: string
+            default: ""
+        steps:
+          - run:
+              name: "Terraform Config Validate"
+              command: |
+                terraform validate << parameters.additional_params >>
+
+jobs:
+  terraform-plan-infrastructure:
+    docker:
+      - image: bartsmykla/cicd:1.4.2
+    steps:
+      - checkout
+      - terraform/init:
+          additional_params: |
+            --backend-config="access_key=${DIGITAL_OCEAN_SPACES_ACCESS_KEY}" \
+            --backend-config="secret_key=${DIGITAL_OCEAN_SPACES_SECRET_KEY}" \
+            --backend-config="bucket=tfstate-smykla" \
+            --backend-config="endpoint=https://fra1.digitaloceanspaces.com" \
+            --backend-config="key=cluster/terraform.tfstate"
+      - save_cache:
+          key: terraform-state-{{.Environment.CIRCLE_WORKFLOW_ID}}
+          paths:
+            - terraform.tfstate
+            - terraform.tfstate.backup
+            - .terraform
+      - terraform/config_validate
+      - terraform/plan
+
+  terraform-setup-infrastructure:
+    docker:
+      - image: bartsmykla/cicd:1.4.2
+    steps:
+      - checkout
+      - restore_cache:
+          key: terraform-state-{{.Environment.CIRCLE_WORKFLOW_ID}}
+      - terraform/apply
+
+workflows:
+  "Setup Infrastructure":
+    jobs:
+      - terraform-plan-infrastructure
+      - hold:
+          type: approval
+          requires:
+            - terraform-plan-infrastructure
+      - terraform-setup-infrastructure:
+          requires:
+            - hold
+          filters:
+            branches:
+              only: master

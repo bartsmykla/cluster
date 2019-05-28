@@ -5,3 +5,4 @@ terraform.tfstate*
 terraform.tfstate.*
 secrets.tfvars
 secrets.auto.tfvars
+backend.tfconfig
