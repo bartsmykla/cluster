@@ -104,6 +104,9 @@ jobs:
             - << parameters.plan_path >>
       - store_artifacts:
           path: << parameters.plan_path >>
+    environment:
+      TF_IN_AUTOMATION: true
+      TF_LOG: ERROR
 
   terraform-setup-infrastructure:
     docker:
@@ -120,6 +123,9 @@ jobs:
           key: terraform-plan-{{.Environment.CIRCLE_WORKFLOW_ID}}
       - terraform/apply:
           plan_path: << parameters.plan_path >>
+    environment:
+      TF_IN_AUTOMATION: true
+      TF_LOG: ERROR
 
 workflows:
   "Setup Infrastructure":
