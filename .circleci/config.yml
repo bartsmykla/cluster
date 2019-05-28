@@ -95,6 +95,9 @@ jobs:
       - terraform/config_validate
       - terraform/plan:
           plan_path: << parameters.plan_path >>
+      - run:
+          name: "Display plan"
+          command: cat << parameters.plan_path >>
       - save_cache:
           key: terraform-plan-{{.Environment.CIRCLE_WORKFLOW_ID}}
           paths:
