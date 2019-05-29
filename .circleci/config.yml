@@ -43,8 +43,7 @@ orbs:
           - run:
               name: "Terraform Apply"
               command: |
-                ([ -f << parameters.plan_path >> ] && terraform apply --auto-approve << parameters.additional_params >> << parameters.plan_path >>) \
-                || echo "No plan to apply"
+                terraform apply --auto-approve << parameters.additional_params >> << parameters.plan_path >>
 
       destroy:
         description: "Terraform Destroy"
