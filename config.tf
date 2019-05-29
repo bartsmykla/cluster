@@ -196,7 +196,7 @@ resource "null_resource" "cert-manager-crds" {
 
   provisioner "local-exec" {
     when    = "destroy"
-    command = "rm ${local.temp_kubeconfig_path} || echo '${local.temp_kubeconfig_path} not existing'"
+    command = "rm ${local.temp_kubeconfig_path} || true"
   }
 }
 
@@ -238,7 +238,7 @@ resource "null_resource" "cluster-issuer" {
 
   provisioner "local-exec" {
     when    = "destroy"
-    command = "rm ${local.temp_kubeconfig_path}"
+    command = "rm ${local.temp_kubeconfig_path} || true"
   }
 
   depends_on = [
