@@ -28,7 +28,7 @@ orbs:
           - run:
               name: "Terraform Plan"
               command: |
-                terraform plan --out << parameters.plan_path >> << parameters.additional_params >>
+                terraform plan --input="false" --out="<< parameters.plan_path >> << parameters.additional_params >>"
 
       apply:
         description: "Terraform Apply"

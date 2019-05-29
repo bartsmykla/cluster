@@ -48,44 +48,8 @@ provider "kubernetes" {
   cluster_ca_certificate = local.k8s.cluster.ca.certificate
 }
 
-locals {
-  temp_droplets_json_path = "/tmp/droplets_qwerty9876.json"
-}
-
-resource "null_resource" "get_droplets" {
-  provisioner "local-exec" {
-    command = "${path.cwd}/scripts/get_droplets.sh --json-file-path ${local.temp_droplets_json_path}"
-  }
-
-  provisioner "local-exec" {
-
-    command = "rm ${local.temp_droplets_json_path} || echo '${local.temp_droplets_json_path} not existing'"
-    when    = "destroy"
-  }
-
-  depends_on = [
-    digitalocean_kubernetes_cluster.smykla-prod
-  ]
-}
-
-data "local_file" "droplets_json" {
-  filename = local.temp_droplets_json_path
-
-  depends_on = [
-    null_resource.get_droplets
-  ]
-}
-
-locals {
-  droplet_ids = [
-    for droplet in jsondecode(data.local_file.droplets_json.content).droplets :
-    droplet.id
-    if contains(droplet.tags, "k8s:${digitalocean_kubernetes_cluster.smykla-prod.id}")
-  ]
-
-  depends_on = [
-    null_resource.get_droplets
-  ]
+data "external" "droplet_ids" {
+  program = ["${path.module}/scripts/get_droplet_ids.sh"]
 }
 
 resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
@@ -113,7 +77,7 @@ resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
     protocol = "tcp"
   }
 
-  droplet_ids = local.droplet_ids
+  droplet_ids = jsondecode(data.external.droplet_ids.result.droplet_ids)
 }
 
 locals {
