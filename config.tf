@@ -78,6 +78,10 @@ resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
   }
 
   droplet_ids = jsondecode(data.external.droplet_ids.result.droplet_ids)
+
+  depends_on = [
+    digitalocean_kubernetes_cluster.smykla-prod
+  ]
 }
 
 locals {
