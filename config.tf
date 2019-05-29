@@ -234,10 +234,6 @@ resource "null_resource" "cert-manager-crds" {
     when    = "destroy"
     command = "rm ${local.temp_kubeconfig_path} || echo '${local.temp_kubeconfig_path} not existing'"
   }
-
-  //  depends_on = [
-  //    digitalocean_kubernetes_cluster.smykla-prod
-  //  ]
 }
 
 data "helm_repository" "jetstack" {
