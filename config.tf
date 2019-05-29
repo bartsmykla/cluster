@@ -50,6 +50,10 @@ provider "kubernetes" {
 
 data "external" "droplet_ids" {
   program = ["${path.module}/scripts/get_droplet_ids.sh"]
+
+  depends_on = [
+    digitalocean_kubernetes_cluster.smykla-prod
+  ]
 }
 
 resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
@@ -78,10 +82,6 @@ resource "digitalocean_loadbalancer" "smykla-prod-public-lb" {
   }
 
   droplet_ids = jsondecode(data.external.droplet_ids.result.droplet_ids)
-
-  depends_on = [
-    digitalocean_kubernetes_cluster.smykla-prod
-  ]
 }
 
 locals {
