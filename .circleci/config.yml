@@ -1,6 +1,15 @@
 version: 2.1
 
 orbs:
+  helm:
+    commands:
+      repo_update:
+        description: "Helm Repo Update"
+        steps:
+          - run:
+              name: "Helm Repo Update"
+              command: |
+                helm repo update
   terraform:
     commands:
       init:
@@ -124,6 +133,7 @@ jobs:
         default: cluster.plan
     steps:
       - checkout
+      - helm/repo_update
       - restore_cache:
           key: terraform-state-{{.Environment.CIRCLE_WORKFLOW_ID}}
       - restore_cache:
