@@ -319,7 +319,7 @@ resource "kubernetes_ingress" "simple-go-server-ingress" {
     annotations = {
       "ingress.kubernetes.io/ssl-redirect"     = "true"
       "kubernetes.io/tls-acme"                 = "true"
-      "certmanager.k8s.io/cluster-issuer"      = "letsencrypt-production"
+      "certmanager.k8s.io/cluster-issuer"      = "letsencrypt-staging"
       "kubernetes.io/ingress.class"            = "nginx"
       "certmanager.k8s.io/acme-challenge-type" = "dns01"
       "certmanager.k8s.io/acme-dns01-provider" = "prod-digitalocean"
