@@ -22,19 +22,15 @@ resource "digitalocean_kubernetes_cluster" "smykla-prod" {
 }
 
 locals {
-  kubeconfig = tolist(digitalocean_kubernetes_cluster.smykla-prod.kube_config)[0]
-}
-
-locals {
   k8s = {
     host = digitalocean_kubernetes_cluster.smykla-prod.endpoint
     client = {
-      certificate = base64decode(local.kubeconfig.client_certificate)
-      key         = base64decode(local.kubeconfig.client_key)
+      certificate = base64decode(tolist(digitalocean_kubernetes_cluster.smykla-prod.kube_config)[0].client_certificate)
+      key         = base64decode(tolist(digitalocean_kubernetes_cluster.smykla-prod.kube_config)[0].client_key)
     }
     cluster = {
       ca = {
-        certificate = base64decode(local.kubeconfig.cluster_ca_certificate)
+        certificate = base64decode(tolist(digitalocean_kubernetes_cluster.smykla-prod.kube_config)[0].cluster_ca_certificate)
       }
     }
   }
@@ -49,7 +45,7 @@ provider "kubernetes" {
 }
 
 data "external" "droplet_ids" {
-  program = ["${path.module}/scripts/get_droplet_ids.sh"]
+  program = [join("", [path.module, "/scripts/get_droplet_ids.sh"])]
 
   depends_on = [
     digitalocean_kubernetes_cluster.smykla-prod
@@ -104,7 +100,7 @@ resource "kubernetes_service_account" "tiller" {
 
 resource "kubernetes_cluster_role_binding" "tiller" {
   metadata {
-    name = kubernetes_service_account.tiller.metadata.0.name
+    name = kubernetes_service_account.tiller.metadata[0].name
   }
 
   role_ref {
@@ -115,10 +111,10 @@ resource "kubernetes_cluster_role_binding" "tiller" {
 
   subject {
     kind = "ServiceAccount"
-    name = kubernetes_service_account.tiller.metadata.0.name
+    name = kubernetes_service_account.tiller.metadata[0].name
 
     api_group = ""
-    namespace = kubernetes_service_account.tiller.metadata.0.namespace
+    namespace = kubernetes_service_account.tiller.metadata[0].namespace
   }
 }
 
@@ -133,8 +129,8 @@ provider "helm" {
 
   debug           = true
   install_tiller  = true
-  service_account = kubernetes_service_account.tiller.metadata.0.name
-  namespace       = kubernetes_service_account.tiller.metadata.0.namespace
+  service_account = kubernetes_service_account.tiller.metadata[0].name
+  namespace       = kubernetes_service_account.tiller.metadata[0].namespace
   tiller_image    = "gcr.io/kubernetes-helm/tiller:v2.14.0"
 }
 
@@ -145,7 +141,7 @@ data "helm_repository" "stable" {
 
 resource "helm_release" "nginx-ingress" {
   name       = "nginx-ingress"
-  repository = data.helm_repository.stable.metadata.0.name
+  repository = data.helm_repository.stable.metadata[0].name
   chart      = "nginx-ingress"
   version    = "1.6.15"
   namespace  = "kube-system"
@@ -196,12 +192,20 @@ locals {
 
 resource "null_resource" "cert-manager-crds" {
   provisioner "local-exec" {
-    command = "${path.cwd}/scripts/kubectl_operations.sh --cluster-id ${digitalocean_kubernetes_cluster.smykla-prod.id} --kubeconfig-path ${local.temp_kubeconfig_path} --crds-path ${local.cert-manager.crds-path}"
+    command = join("", [
+      path.cwd,
+      "/scripts/kubectl_operations.sh --cluster-id ",
+      digitalocean_kubernetes_cluster.smykla-prod.id,
+      " --kubeconfig-path ",
+      local.temp_kubeconfig_path,
+      " --crds-path ",
+      local.cert-manager.crds-path
+    ])
   }
 
   provisioner "local-exec" {
     when    = "destroy"
-    command = "rm ${local.temp_kubeconfig_path} || true"
+    command = join("", ["rm ", local.temp_kubeconfig_path, " || true"])
   }
 }
 
@@ -238,12 +242,19 @@ resource "kubernetes_secret" "do-dns-token" {
 
 resource "null_resource" "cluster-issuer" {
   provisioner "local-exec" {
-    command = "${path.cwd}/scripts/kubectl_operations.sh --cluster-id ${digitalocean_kubernetes_cluster.smykla-prod.id} --kubeconfig-path ${local.temp_kubeconfig_path} --create-cluster-issuers"
+    command = join("", [
+      path.cwd,
+      "/scripts/kubectl_operations.sh --cluster-id ",
+      digitalocean_kubernetes_cluster.smykla-prod.id,
+      " --kubeconfig-path ",
+      local.temp_kubeconfig_path,
+      " --create-cluster-issuers"
+    ])
   }
 
   provisioner "local-exec" {
     when    = "destroy"
-    command = "rm ${local.temp_kubeconfig_path} || true"
+    command = join("", ["rm ", local.temp_kubeconfig_path, " || true"])
   }
 
   depends_on = [
