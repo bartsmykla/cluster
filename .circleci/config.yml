@@ -32,7 +32,7 @@ orbs:
             default: ""
           plan_path:
             type: string
-            default: cluster.plan
+            default: cluster.tfplan
         steps:
           - run:
               name: "Terraform Plan"
@@ -47,7 +47,7 @@ orbs:
             default: ""
           plan_path:
             type: string
-            default: cluster.plan
+            default: cluster.tfplan
         steps:
           - run:
               name: "Terraform Apply"
@@ -96,7 +96,7 @@ jobs:
     parameters:
       plan_path:
         type: string
-        default: cluster.plan
+        default: cluster.tfplan
     steps:
       - checkout
       - terraform/init:
@@ -119,8 +119,6 @@ jobs:
           key: terraform-plan-{{.Environment.CIRCLE_WORKFLOW_ID}}
           paths:
             - << parameters.plan_path >>
-      - store_artifacts:
-          path: << parameters.plan_path >>
     environment:
       TF_IN_AUTOMATION: true
 
@@ -130,7 +128,7 @@ jobs:
     parameters:
       plan_path:
         type: string
-        default: cluster.plan
+        default: cluster.tfplan
     steps:
       - checkout
       - helm/repo_update
